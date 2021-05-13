@@ -102,7 +102,7 @@ void on_socket_enter(struct child_info *ci) {
     ci->msgbuf.fd_addr = CMSG_DATA(CMSG_FIRSTHDR(&data.msg));
     child_puts(ci->pid, ci->msgbuf.start, (char *)&data, sizeof(data));
 
-    // modify syscall
+    // replace syscall
     struct user_regs_struct regs1 = ci->regs;
     args[0] = ci->fd_sock[1];
     args[1] = (arg_t)ci->msgbuf.start;
@@ -146,7 +146,7 @@ void on_connect_enter(struct child_info *ci) {
     int fdp = get_fdp(ci, fdc);
     if (fdp == -1) {
         logd("not managed fd. ignored");
-        goto fin;
+        return;
     }
     struct sockaddr *origaddr = malloc((socklen_t) args[2]);
     if (origaddr == NULL)
@@ -203,9 +203,15 @@ void on_connect_exit(struct child_info *ci) {
 }
 
 void stopped(struct child_info *ci) {
-    if (WSTOPSIG(ci->status) != SIGTRAP) {
-        logd("[child stopped by signal (ignored): %s]", strsignal(WSTOPSIG(ci->status)));
-        return;
+    int sig = WSTOPSIG(ci->status);
+    if (sig != SIGTRAP) {
+        if (sig == SIGCHLD) {
+            logd("[child exited]");
+            exit(0);
+        } else {
+            logd("[child stopped by signal (ignored): %s]", strsignal(WSTOPSIG(ci->status)));
+            return;
+        }
     }
 
     erre_sys(ptrace(PTRACE_GETREGS, ci->pid, NULL, &ci->regs));
@@ -221,10 +227,11 @@ void stopped(struct child_info *ci) {
                 on_connect_enter(ci);
                 break;
             case SYS_close:
-                logd("close");
                 break;
             case SYS_close_range:
-                logd("close_range");
+                break;
+            case SYS_clone:
+                logd("clone");
                 break;
         }
         ci->curr_call = orig_rax;
@@ -236,7 +243,8 @@ void stopped(struct child_info *ci) {
                     on_socket_exit(ci);
                 break;
             case SYS_connect:
-                on_connect_exit(ci);
+                if (orig_rax == SYS_nanosleep)
+                    on_connect_exit(ci);
                 break;
         }
         ci->curr_call = -1;
@@ -276,6 +284,8 @@ int main(int argc, const char *argv[])
             if (first_exec) {
                 first_exec = 0;
                 ci.curr_call = -1;
+                erre_sys(ptrace(PTRACE_SETOPTIONS, ci.pid, 0,
+                            PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC));
                 erre_sys(ptrace(PTRACE_SYSCALL, ci.pid, NULL, NULL));
                 continue;
             }
