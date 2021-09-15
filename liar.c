@@ -73,6 +73,10 @@ void on_socket_enter(struct child_info *ci) {
         logd("not inet family. ignored");
         return;
     }
+    if (args[1] != SOCK_STREAM) {
+        logd("not tcp. ignored");
+        return;
+    }
     fd = socket(args[0], args[1], args[2]);
     if (fd == -1) {
         ci->curr_err = errno;
@@ -160,7 +164,7 @@ void on_connect_enter(struct child_info *ci) {
 
     struct sockaddr_in proxyaddr = {
         .sin_family = AF_INET,
-        .sin_port = htons(1079),
+        .sin_port = htons(8000),
     };
     inet_aton("127.0.0.1", &proxyaddr.sin_addr);
 
@@ -171,7 +175,9 @@ void on_connect_enter(struct child_info *ci) {
     }
 
     // connect to proxy server
-    if (connect(fdp, (struct sockaddr *) &proxyaddr, args[2]) == -1) {
+    logd("connecting to proxy server...");
+    if (connect(fdp, (struct sockaddr *) &proxyaddr, sizeof(proxyaddr)) == -1) {
+        perror("[debug] proxy server connect failed...");
         ci->curr_err = errno;
     } else {
         ci->curr_err = 0;
@@ -180,6 +186,7 @@ void on_connect_enter(struct child_info *ci) {
                 ntohs(((struct sockaddr_in *) origaddr)->sin_port));
         if (err != 0) {
             logd("socks4 connect failed");
+            ci->curr_err = -ECONNREFUSED;
         }
     }
     free(origaddr);
@@ -189,6 +196,7 @@ void on_connect_enter(struct child_info *ci) {
 
     struct user_regs_struct regs1;
 fin:
+    // 替换为nanosleep，是否成功不用关心
     regs1 = ci->regs;
     regs1.orig_rax = SYS_nanosleep;
     erre_sys(ptrace(PTRACE_SETREGS, ci->pid, NULL, &regs1));
@@ -227,6 +235,7 @@ void stopped(struct child_info *ci) {
                 on_connect_enter(ci);
                 break;
             case SYS_close:
+                // TODO close fdp
                 break;
             case SYS_close_range:
                 break;

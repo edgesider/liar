@@ -10,7 +10,7 @@ static int socks4_connect(int fd, int addr, int port) {
     char *p = buf;
     int n;
 
-    printf("connecting: %s:%d\n", inet_ntoa(*(struct in_addr *) &addr), port);
+    printf("[socks4 init]: %s:%d\n", inet_ntoa(*(struct in_addr *) &addr), port);
     *p++ = 4;  // socks4
     *p++ = 1;  // connect
     *((short *)p) = htons(port);
