@@ -34,3 +34,5 @@ gcc -Wall liar.c -o liar
 如果子进程对描述符使用了O_NONBLOCK，那么在connect时就没法直接通过fdp来建立代理。如果在connect之前将O_NONBLOCK去掉的话，子进程的非阻塞IO就可能明显变慢，尤其是连接非本地代理的时候。
 
 如果要更好地处理非阻塞IO，要么在父进程中使用accept，要么在处理一下epoll、select、poll等调用。用这两种方式可以在父进程中维护文件描述符的就绪状态。
+
+2. clone.2
