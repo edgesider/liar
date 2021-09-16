@@ -210,6 +210,20 @@ void on_connect_exit(struct child_info *ci) {
     erre_sys(ptrace(PTRACE_SETREGS, ci->pid, NULL, &regs1));
 }
 
+void on_close_enter(struct child_info *ci) {
+    struct socket_info *si;
+    arg_t args[1];
+    syscall_args2array(&ci->regs, args, 1);
+
+    logd("close enter: %d", args[0]);
+
+    si = find_fdc(ci, args[0]);
+    if (si != NULL) {
+        logd("closing fdp %d", si->fdp);
+        close(si->fdp);
+    }
+}
+
 void stopped(struct child_info *ci) {
     int sig = WSTOPSIG(ci->status);
     if (sig != SIGTRAP) {
@@ -235,7 +249,7 @@ void stopped(struct child_info *ci) {
                 on_connect_enter(ci);
                 break;
             case SYS_close:
-                // TODO close fdp
+                on_close_enter(ci);
                 break;
             case SYS_close_range:
                 break;
