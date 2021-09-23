@@ -187,7 +187,7 @@ void on_connect_enter(struct child_info *ci) {
                 ntohs(((struct sockaddr_in *) origaddr)->sin_port));
         if (err != 0) {
             logd("socks4 connect failed");
-            ci->curr_err = -ECONNREFUSED;
+            ci->curr_err = ECONNREFUSED;
         }
     }
     free(origaddr);
@@ -206,6 +206,7 @@ fin:
 void on_connect_exit(struct child_info *ci) {
     logd("connect exit");
 
+    // 被替换的nanosleep总会失败，所以即使curr_err为0，也需要设置一下
     struct user_regs_struct regs1 = ci->regs;
     regs1.rax = -ci->curr_err;
     erre_sys(ptrace(PTRACE_SETREGS, ci->pid, NULL, &regs1));
