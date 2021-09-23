@@ -1,10 +1,12 @@
 # Liar
 
+- 支持连接后脱离
+
 ## 编译运行
 
 ```bash
-gcc -Wall liar.c -o liar
-./liar [prog] [arg] ...
+make
+./liar <prog> [arg] ...
 ```
 
 ## 思路
@@ -41,4 +43,10 @@ gcc -Wall liar.c -o liar
 
 像graftcp之所以不会遇到这个问题，是因为它在代理器中加了一层代理，代理器可以通过是否accept子进程的请求，来控制描述符的状态；从代理器的角度来讲，这种方式更为主动一些。
 
-2. clone.2
+2. 过滤对描述符传送套接字的close
+
+DONE
+
+3. clone.2
+
+4. fdp->fdc 哈希表
