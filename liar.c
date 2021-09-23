@@ -127,7 +127,8 @@ void on_socket_exit(struct child_info *ci) {
     if (ci->regs.rax == 0) {
         errno = 0;
         int fd = ptrace(PTRACE_PEEKDATA, ci->pid, ci->msgbuf.fd_addr, NULL);
-        if (errno != 0) err("ptrace");
+        if (errno != 0)
+            err("ptrace");
 
         struct user_regs_struct regs1 = ci->regs;
         regs1.rax = fd;
@@ -217,10 +218,16 @@ void on_close_enter(struct child_info *ci) {
 
     logd("close enter: %d", args[0]);
 
-    si = find_fdc(ci, args[0]);
-    if (si != NULL) {
-        logd("closing fdp %d", si->fdp);
-        close(si->fdp);
+    if (args[0] == ci->fd_sock[1]) {
+        logd("attemp to close fd_sock, ignored");
+        ci->regs.orig_rax = SYS_nanosleep;
+        erre_sys(ptrace(PTRACE_SETREGS, ci->pid, NULL, &ci->regs));
+    } else {
+        si = find_fdc(ci, args[0]);
+        if (si != NULL) {
+            logd("closing fdp %d", si->fdp);
+            close(si->fdp);
+        }
     }
 }
 

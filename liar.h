@@ -16,9 +16,11 @@ struct child_info {
     int status;
     struct user_regs_struct regs;
     int curr_call;
+    // 处理enter-stop时出现了错误，暂存以在exit-stop时返回
     int curr_err;
 
-    int fd_sock[2];  // socket for file descriptors transfer
+    // 用于向子进程发送文件描述符
+    int fd_sock[2];
 
     struct {
         void *start;
