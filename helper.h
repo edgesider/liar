@@ -1,6 +1,12 @@
 #ifndef HELPER_H_
 #define HELPER_H_
 
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ptrace.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/reg.h>
 #include <sys/user.h>
@@ -1222,5 +1228,5 @@ static void print_buf(void *buf, size_t len) {
     printf("\n");
 }
 
-#pragma GCC diagnostic pop
+// #pragma GCC diagnostic pop
 #endif

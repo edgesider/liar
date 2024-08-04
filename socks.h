@@ -2,8 +2,9 @@
 #define SOCKS_H_
 
 #include <arpa/inet.h>
-
-#include "helper.h"
+#include <errno.h>
+#include <stdio.h>
+#include <unistd.h>
 
 static int socks4_connect(int fd, int addr, int port) {
     char buf[128];
