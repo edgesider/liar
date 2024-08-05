@@ -13,6 +13,8 @@
 #include <errno.h>
 
 #define LIAR_DEBUG 1
+#define PROXY_IP "127.0.0.1"
+#define PROXY_PORT 8001
 
 #include "liar.h"
 #include "socks.h"
@@ -46,19 +48,6 @@ int unbind_fd(struct child_info *ci, int fdc) {
         return -1;
     si->fdp = si->fdc = -1;
     return 0;
-}
-
-void start_child(struct child_info *ci, const char *prog, char *argv[]) {
-    int pid;
-    switch (pid = fork()) {
-        case -1:
-            err("fork");
-        case 0:
-            erre_sys(ptrace(PTRACE_TRACEME, 0, NULL, NULL));
-            erre_sys(execvp(prog, argv));
-        default:
-            ci->pid = pid;
-    }
 }
 
 void on_socket_enter(struct child_info *ci) {
@@ -149,6 +138,7 @@ void on_connect_enter(struct child_info *ci) {
 
     int fdc = args[0];
     int fdp = get_fdp(ci, fdc);
+    printf("fdc=%d\n", fdc);
     if (fdp == -1) {
         logd("not managed fd. ignored");
         return;
@@ -165,9 +155,9 @@ void on_connect_enter(struct child_info *ci) {
 
     struct sockaddr_in proxyaddr = {
         .sin_family = AF_INET,
-        .sin_port = htons(8000),
+        .sin_port = htons(PROXY_PORT),
     };
-    inet_aton("127.0.0.1", &proxyaddr.sin_addr);
+    inet_aton(PROXY_IP, &proxyaddr.sin_addr);
 
     int flags = fcntl(fdp, F_GETFL);
     // remove O_NONBLOCK
@@ -217,7 +207,7 @@ void on_close_enter(struct child_info *ci) {
     arg_t args[1];
     syscall_args2array(&ci->regs, args, 1);
 
-    logd("close enter: %d", args[0]);
+    logd("close enter: %lld", args[0]);
 
     if (args[0] == ci->fd_sock[1]) {
         logd("attemp to close fd_sock, ignored");
@@ -228,6 +218,7 @@ void on_close_enter(struct child_info *ci) {
         if (si != NULL) {
             logd("closing fdp %d", si->fdp);
             close(si->fdp);
+            unbind_fd(ci, si->fdc);
         }
     }
 }
@@ -262,7 +253,7 @@ void stopped(struct child_info *ci) {
             case SYS_close_range:
                 break;
             case SYS_clone:
-                logd("clone");
+                logd("clone enter");
                 break;
         }
         ci->curr_call = orig_rax;
@@ -285,6 +276,60 @@ void stopped(struct child_info *ci) {
     erre_sys(ptrace(PTRACE_SYSCALL, ci->pid, NULL, NULL));
 }
 
+int wait_child(struct child_info *ci) {
+
+    for (int i = 0; i < MAX_SOCKETS_COUNT; i++) {
+        ci->sockets[i].fdp = -1;
+        ci->sockets[i].fdc = -1;
+    }
+
+    erre_sys(waitpid(ci->pid, &ci->status, 0));
+    if (WIFSTOPPED(ci->status)) {
+        // init exit (clone/exec)
+        ci->curr_call = -1;
+        erre_sys(ptrace(PTRACE_SETOPTIONS, ci->pid, 0,
+                    PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC));
+        erre_sys(ptrace(PTRACE_SYSCALL, ci->pid, NULL, NULL));
+    } else {
+        logd("expecting init-exit");
+        return -1;
+    }
+
+    for (;;) {
+        erre_sys(waitpid(ci->pid, &ci->status, 0));
+        if (WIFEXITED(ci->status)) {
+            logd("child exited: %d", WEXITSTATUS(ci->status));
+            return 0;
+        } else if (WIFSIGNALED(ci->status)) {
+            logd("child exited [signal: %s]: %d",
+                    strsignal(WSTOPSIG(ci->status)), WEXITSTATUS(ci->status));
+            return 0;
+        } else if (WIFSTOPPED(ci->status)) {
+            stopped(ci);
+        } else if (WIFCONTINUED(ci->status)) {
+            logd("child continue");
+        } else {
+            logd("unknown stop");
+            return -1;
+        }
+    }
+}
+
+struct child_info *start_child(const char *prog, char *argv[]) {
+    struct child_info *ci = malloc(sizeof(struct child_info));
+
+    erre_sys(socketpair(AF_UNIX, SOCK_DGRAM, 0, ci->fd_sock));
+    switch (ci->pid = fork()) {
+        case -1:
+            err("fork");
+        case 0:
+            erre_sys(ptrace(PTRACE_TRACEME, 0, NULL, NULL));
+            erre_sys(execvp(prog, argv));
+        default:
+            return ci;
+    }
+}
+
 int main(int argc, const char *argv[])
 {
     if (argc < 2) {
@@ -292,40 +337,8 @@ int main(int argc, const char *argv[])
         exit(0);
     }
 
-    struct child_info ci = { 0 };
-    int first_exec = 1;
+    int pid;
 
-    for (int i = 0; i < MAX_SOCKETS_COUNT; i++) {
-        ci.sockets[i].fdp = -1;
-        ci.sockets[i].fdc = -1;
-    }
-
-    erre_sys(socketpair(AF_UNIX, SOCK_DGRAM, 0, ci.fd_sock));
-    start_child(&ci, argv[1], (char **) &(argv[1]));
-    for (;;) {
-        erre_sys(waitpid(ci.pid, &ci.status, 0));
-        if (WIFEXITED(ci.status)) {
-            logd("child exited: %d", WEXITSTATUS(ci.status));
-            return 0;
-        } else if (WIFSIGNALED(ci.status)) {
-            logd("child exited [signal: %s]: %d",
-                    strsignal(WSTOPSIG(ci.status)), WEXITSTATUS(ci.status));
-            return 0;
-        } else if (WIFSTOPPED(ci.status)) {
-            if (first_exec) {
-                first_exec = 0;
-                ci.curr_call = -1;
-                erre_sys(ptrace(PTRACE_SETOPTIONS, ci.pid, 0,
-                            PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC));
-                erre_sys(ptrace(PTRACE_SYSCALL, ci.pid, NULL, NULL));
-                continue;
-            }
-            stopped(&ci);
-        } else if (WIFCONTINUED(ci.status)) {
-            logd("child continue");
-        } else {
-            logd("unknown stop");
-            return -1;
-        }
-    }
+    struct child_info *ci = start_child(argv[1], (char **) &(argv[1]));
+    return wait_child(ci);
 }

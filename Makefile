@@ -1,7 +1,12 @@
-liar: liar.c
-	cc -g liar.c -o liar
+liar: *.c *.h
+	gcc -g liar.c -o liar
+
+test: test.c
+	gcc -g test.c -o test
 
 clean:
 	rm -f liar
 
-.PHONY: clean
+all: liar test
+
+.PHONY: clean all

@@ -1,6 +1,7 @@
 #ifndef LIAR_H_
 #define LIAR_H_
 
+#include <sys/socket.h>
 #include <sys/user.h>
 
 #define MSGBUF_SIZE (sizeof(struct msghdr) + CMSG_SPACE(sizeof(int)))  // size of recvmsg buffer

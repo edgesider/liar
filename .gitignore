@@ -2,3 +2,5 @@ tags
 liar
 hashtest
 test
+.cache
+compile_commands.json

@@ -18,14 +18,17 @@ int main(int argc, const char *argv[])
         .sin_port = htons(8000),
     };
     inet_aton("127.0.0.1", &addr.sin_addr);
-    char *msg = "hello\n";
+    char *msg = "GET /\n\n";
 
     erre_sys((fd = socket(AF_INET, SOCK_STREAM, 0)));
     erre_sys(connect(fd, (struct sockaddr*) &addr, sizeof(addr)));
     erre_sys(write(fd, msg, strlen(msg)));
     erre_sys(close(fd));
 
-    erre_sys(fd = socket(AF_UNIX, SOCK_DGRAM, 0));
+    erre_sys(fd = socket(AF_INET, SOCK_DGRAM, 0));
+    erre_sys(connect(fd, (struct sockaddr *) &addr, sizeof(addr)));
+    erre_sys(write(fd, msg, strlen(msg)));
+    erre_sys(close(fd));
 
     return 0;
 }
