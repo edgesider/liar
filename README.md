@@ -11,22 +11,23 @@ make
 
 ## 思路
 
-1. 建立文件描述符发送通道
+### 1. 建立文件描述符发送通道
 
 父进程在fork之前，通过socketpair(AF_UNIX)建立一个unix域套接字，之后通过该套接字进行父子进程间的文件描述符传送。
 
-2. 创建共享文件描述符
+### 2. 创建共享文件描述符
 
 使用ptrace来hook子进程的socket调用。
-   a. 在wait()到enter-stop时，由父进程创建一个socket（记为fdp），并使用sendmsg发送给子进程；
-   b. 接着使用PTRACE_SETREGS把子进程的socket调用替换为recvmsg（一是为了避免只发送不接受造成阻塞，二是为了获取子进程中的文件描述符），然后父进程使用PTRACE_SYSCALL继续子进程；
-   c. 使用wait等待这次调用（实际上是被替换来的recvmsg）的exit-stop，这时通过PTRACE_PEEKUSER从recvmsg的buf中获取子进程获得的文件描述符（记为fdc），然后通过PTRACE_SETREGS设置系统调用的返回值为fdc。
+
+1. 在wait()到enter-stop时，由父进程创建一个socket（记为fdp），并使用sendmsg发送给子进程；
+2. 接着使用PTRACE_SETREGS把子进程的socket调用替换为recvmsg（一是为了避免只发送不接受造成阻塞，二是为了获取子进程中的文件描述符），然后父进程使用PTRACE_SYSCALL继续子进程；
+3. 使用wait等待这次调用（实际上是被替换来的recvmsg）的exit-stop，这时通过PTRACE_PEEKUSER从recvmsg的buf中获取子进程获得的文件描述符（记为fdc），然后通过PTRACE_SETREGS设置系统调用的返回值为fdc。
 
 至此，父子进程中各有一个文件描述符（fdp和fdc），两者都指向同一个socket。
 
 在这个过程中，还有一个值得一提的细节。由于recvmsg是在子进程中执行的，所以需要子进程提供一块可用的内存来完成这个调用。在目前的实现中，会在recvmsg执行之前，将当前栈顶所在的内存页面备份在父进程中，然后使用这个页面来执行recvmsg；该调用完成、并成功获取fdc后，再将栈顶所在页面还原。
 
-3. 建立代理
+### 3. 建立代理
 
 在子进程调用connect之后，父进程查看参数，若需要进行代理，则通过connect中的文件描述符（fdc）查找对应的fdp，然后使用fdp向代理服务器发起连接和代理请求，代理建立完成后，父进程关闭fdp，并将当前的connect调用替换为一个无用的调用，比如sleep(0)，最后继续子进程。
 
